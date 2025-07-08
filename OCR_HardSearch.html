@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart PDF OCR Toolkit - Deep Search</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        input, textarea, button {
+            display: block;
+            margin-bottom: 10px;
+            width: 100%;
+            max-width: 600px;
+        }
+        #status {
+            margin-top: 10px;
+            font-weight: bold;
+        }
+        #resultTable {
+            margin-top: 20px;
+            border-collapse: collapse;
+            width: 100%;
+        }
+        #resultTable th, #resultTable td {
+            border: 1px solid #ccc;
+            padding: 8px;
+            text-align: left;
+        }
+        #resultTable th {
+            background-color: #f2f2f2;
+        }
+        .screenshot {
+            max-width: 100px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .screenshot:hover {
+            transform: scale(1.2);
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.9);
+        }
+        .modal-content {
+            margin: 5% auto;
+            display: block;
+            max-width: 90%;
+        }
+        .close {
+            position: absolute;
+            top: 20px;
+            right: 35px;
+            color: #fff;
+            font-size: 40px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+<marquee> Powered by TRApps </marquee>
+<h1><span style="font-size: 20px;line-height: .3;">Smart PDF OCR Toolkit - Deep Search<Br>DeepReader Series</br></span></h1>
+
+<input type="file" id="pdfUpload" accept="application/pdf" multiple>
+<textarea id="sentence" placeholder="Enter sentence to find" rows="2"></textarea>
+<button id="searchBtn">Search</button>
+<label id="status"></label>
+
+<table id="resultTable">
+    <thead>
+        <tr>
+            <th>SLNO</th>
+            <th>Document Name</th>
+            <th>Page No</th>
+            <th>Match Text</th>
+            <th>Screenshot</th>
+        </tr>
+    </thead>
+    <tbody></tbody>
+</table>
+
+<div id="myModal" class="modal">
+    <span class="close">&times;</span>
+    <img class="modal-content" id="modalImg">
+</div>
+<script>
+  document.addEventListener('contextmenu', function (e) {
+    e.preventDefault();
+    alert("Right-click is disabled on this page.");
+  });
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@2.1.4/dist/tesseract.min.js"></script>
+<script>
+    document.getElementById('searchBtn').addEventListener('click', function() {
+        const fileInput = document.getElementById('pdfUpload');
+        const sentence = document.getElementById('sentence').value.trim().toLowerCase();
+        const files = fileInput.files;
+
+        if (files.length === 0 || !sentence) {
+            alert('Please upload one or more PDFs and enter a sentence to search.');
+            return;
+        }
+
+        document.getElementById('status').textContent = 'Processing...this may take some time';
+        document.querySelector('#resultTable tbody').innerHTML = '';
+        let slno = 1;
+
+        const processFile = async (file) => {
+            const reader = new FileReader();
+            return new Promise((resolve, reject) => {
+                reader.onload = async function(e) {
+                    const loadingTask = pdfjsLib.getDocument({ data: e.target.result });
+                    const pdf = await loadingTask.promise;
+                    const numPages = pdf.numPages;
+
+                    for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+                        const page = await pdf.getPage(pageNum);
+                        const viewport = page.getViewport({ scale: 2 });
+                        const canvas = document.createElement('canvas');
+                        const context = canvas.getContext('2d');
+                        canvas.width = viewport.width;
+                        canvas.height = viewport.height;
+                        await page.render({ canvasContext: context, viewport: viewport }).promise;
+
+                        const dataUrl = canvas.toDataURL('image/png');
+
+                        const result = await Tesseract.recognize(
+                            dataUrl,
+                            'eng',
+                            { logger: m => console.log(m) }
+                        );
+
+                        const text = result.data.text.toLowerCase();
+                        if (text.includes(sentence)) {
+                            const row = document.createElement('tr');
+                            row.innerHTML = `
+                                <td>${slno++}</td>
+                                <td>${file.name}</td>
+                                <td>${pageNum}</td>
+                                <td>${sentence}</td>
+                                <td><img class="screenshot" src="${dataUrl}" alt="Screenshot"></td>
+                            `;
+                            document.querySelector('#resultTable tbody').appendChild(row);
+                        }
+                    }
+                    resolve();
+                };
+                reader.readAsArrayBuffer(file);
+            });
+        };
+
+        const promises = Array.from(files).map(file => processFile(file));
+        Promise.all(promises).then(() => {
+            document.getElementById('status').textContent = 'Search completed.';
+        });
+    });
+
+    document.addEventListener('click', function(e) {
+        if (e.target.classList.contains('screenshot')) {
+            const modal = document.getElementById('myModal');
+            const modalImg = document.getElementById('modalImg');
+            modal.style.display = 'block';
+            modalImg.src = e.target.src;
+        }
+    });
+
+    document.querySelector('.close').addEventListener('click', function() {
+        document.getElementById('myModal').style.display = 'none';
+    });
+</script>
+
+</body>
+</html>

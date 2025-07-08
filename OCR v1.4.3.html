@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title> Smart PDF OCR Toolkit - Lite Search</title>
+    <style>
+        
+	body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        input, textarea, button {
+            display: block;
+            margin-bottom: 10px;
+            width: 100%;
+            max-width: 600px;
+        }
+        #status {
+            margin-top: 10px;
+            font-weight: bold;
+        }
+        #resultTable {
+            margin-top: 20px;
+            border-collapse: collapse;
+            width: 100%;
+        }
+        #resultTable th, #resultTable td {
+            border: 1px solid #ccc;
+            padding: 8px;
+            text-align: left;
+        }
+        #resultTable th {
+            background-color: #f2f2f2;
+        }
+        .screenshot {
+            max-width: 150px;
+            max-height: 150px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .screenshot:hover {
+            transform: scale(1.1);
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0, 0, 0, 0.9);
+        }
+        .modal-content {
+            margin: 15% auto;
+            display: block;
+            max-width: 90%;
+        }
+        .modal-content img {
+            width: 100%;
+        }
+        .close {
+            position: absolute;
+            top: 20px;
+            right: 35px;
+            color: #fff;
+            font-size: 40px;
+            font-weight: bold;
+            transition: 0.3s;
+        }
+        .close:hover,
+        .close:focus {
+            color: #bbb;
+            text-decoration: none;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body bgcolor="#fefefe">
+
+<marquee> Powered by TRApps </marquee>
+  <h1><span style="font-size: 20px;line-height: .3;">Smart PDF OCR Toolkit - Lite Search<Br>DeepReader Serise</br></span></h1>
+
+    <input type="file" id="pdfUpload" accept="application/pdf" multiple>
+    <textarea id="sentence" placeholder="Enter sentence to find" rows="2"></textarea>
+    <button id="searchBtn">Search</button>
+    <button id="exportXlsx">Export to .xlsx</button>
+    <label id="status"></label>
+    <div id="pdfContainer"></div>
+    <div id="result">
+        <table id="resultTable">
+            <thead>
+                <tr>
+                    <th>SLNO</th>
+                    <th>Document Name</th>
+                    <th>Page No</th>
+                    <th>Match Text Full Sentence</th>
+                    <th>Screenshot</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+
+    <!-- Modal for zoomed image -->
+    <div id="myModal" class="modal">
+        <span class="close">&times;</span>
+        <div class="modal-content">
+            <img id="modalImg" src="">
+        </div>
+    </div>
+
+<script>
+  document.addEventListener('contextmenu', event => event.preventDefault());
+</script>
+
+<script>
+  document.onkeydown = function(e) {
+    if (e.ctrlKey && (e.key === 'u' || e.key === 'U')) return false;
+    if (e.key === 'F12' || (e.ctrlKey && e.shiftKey && e.key === 'I')) return false;
+  };
+</script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.6.0/jszip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/docxtemplater@3.26.0"></script>
+
+    <script>
+        document.getElementById('searchBtn').addEventListener('click', function() {
+            const fileInput = document.getElementById('pdfUpload');
+            const sentence = document.getElementById('sentence').value.trim().toLowerCase();  // Convert to lowercase
+            const files = fileInput.files;
+
+            if (files.length === 0 || !sentence) {
+                alert('Please upload one or more PDFs and enter a sentence to search for.');
+                return;
+            }
+// Edited by A.B.M Tanvir Rahman
+
+            document.getElementById('status').textContent = 'Searching...';
+            document.querySelector('#resultTable tbody').innerHTML = '';
+
+            let slno = 1;
+
+            const searchPDF = async (file) => {
+                const reader = new FileReader();
+                return new Promise((resolve, reject) => {
+                    reader.onload = function(e) {
+                        const loadingTask = pdfjsLib.getDocument({data: e.target.result});
+                        loadingTask.promise.then(async pdf => {
+                            const numPages = pdf.numPages;
+                            let found = false;
+
+                            for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+                                const page = await pdf.getPage(pageNum);
+                                const viewport = page.getViewport({scale: 2});
+                                const textContent = await page.getTextContent();
+                                const textItems = textContent.items;
+                                const pageText = textItems.map(item => item.str).join(' ').toLowerCase();  // Convert to lowercase
+
+                                if (pageText.includes(sentence)) {
+                                    found = true;
+                                    const fullSentences = pageText.match(new RegExp(`[^.!?]*?${sentence}[^.!?]*[.!?]`, 'gi'));
+
+                                    // Render the page to a canvas to take a screenshot
+                                    const canvas = document.createElement('canvas');
+                                    const context = canvas.getContext('2d');
+                                    canvas.height = viewport.height;
+                                    canvas.width = viewport.width;
+
+                                    await page.render({canvasContext: context, viewport: viewport}).promise;
+
+                                    fullSentences.forEach((fullSentence, index) => {
+                                        const row = document.createElement('tr');
+                                        const screenshotURL = canvas.toDataURL();
+                                        row.innerHTML = `
+                                            <td>${slno++}</td>
+                                            <td>${file.name}</td>
+                                            <td>${pageNum}</td>
+                                            <td>${fullSentence}</td>
+                                            <td><img class="screenshot" src="${screenshotURL}" alt="Screenshot of the match"></td>
+                                        `;
+                                        document.querySelector('#resultTable tbody').appendChild(row);
+                                    });
+                                }
+                            }
+
+                            if (!found) {
+                                const noDataRow = document.createElement('tr');
+                                noDataRow.innerHTML = `
+                                    <td>${slno++}</td>
+                                    <td>${file.name}</td>
+                                    <td>N/A</td>
+                                    <td>No Match Found</td>
+                                    <td>N/A</td>
+                                `;
+                                document.querySelector('#resultTable tbody').appendChild(noDataRow);
+                            }
+
+                            resolve();
+                        }).catch(err => {
+                            console.error(err);
+                            reject(err);
+                        });
+                    };
+                    reader.readAsArrayBuffer(file);
+                });
+            };
+
+            const promises = Array.from(files).map(file => searchPDF(file));
+            Promise.all(promises)
+                .then(() => {
+                    document.getElementById('status').textContent = 'Search completed.';
+                    if (document.querySelector('#resultTable tbody').innerHTML === '') {
+                        document.getElementById('status').textContent = 'No matches found.';
+                    }
+                })
+                .catch(err => {
+                    document.getElementById('status').textContent = 'Error during search.';
+                    console.error(err);
+                });
+        });
+
+        // Zoom functionality
+        document.querySelector('#resultTable tbody').addEventListener('click', function(event) {
+            if (event.target.classList.contains('screenshot')) {
+                const modal = document.getElementById('myModal');
+                const modalImg = document.getElementById('modalImg');
+                modal.style.display = 'block';
+                modalImg.src = event.target.src;
+            }
+        });
+
+        document.querySelector('.close').addEventListener('click', function() {
+            document.getElementById('myModal').style.display = 'none';
+        });
+
+        // Export to .xlsx
+        document.getElementById('exportXlsx').addEventListener('click', function() {
+            const rows = document.querySelectorAll('#resultTable tbody tr');
+            const wb = XLSX.utils.book_new();
+            const wsData = [
+                ['SLNO', 'Document Name', 'Page No', 'Match Text Full Sentence', 'Screenshot']
+            ];
+
+            rows.forEach(row => {
+                const cells = row.querySelectorAll('td');
+                wsData.push([
+                    cells[0].textContent,
+                    cells[1].textContent,
+                    cells[2].textContent,
+                    cells[3].textContent,
+                    cells[4].querySelector('img') ? cells[4].querySelector('img').src : 'N/A'
+                ]);
+            });
+
+            const ws = XLSX.utils.aoa_to_sheet(wsData);
+            XLSX.utils.book_append_sheet(wb, ws, 'Results');
+            XLSX.writeFile(wb, 'result.xlsx');
+        });
+    </script>
+</body>
+</html>
