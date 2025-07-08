@@ -60,7 +60,12 @@
     <button onclick="validateLogin()">Login</button>
     <div class="error" id="errorMsg"></div>
   </div>
-
+<script>
+  document.addEventListener('contextmenu', function (e) {
+    e.preventDefault();
+    alert("Right-click is disabled on this page.");
+  });
+</script>
   <script>
     // ⚠️ Replace these with secure server-side validation in real use
     const correctUsername = "Tanvirra";
